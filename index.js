@@ -65,29 +65,19 @@ async function connectDB() {
     if (autoReplyMsg.length > 0) {
         client.addEventHandler(async (event) => {
             const message = event.message;
-            
-            // Check if it's a private incoming message (not from the bot itself)
             if (event.isPrivate && !message.out) {
-                // Get User ID from peerId carefully
-                let chatId;
-                if (message.peerId && message.peerId.userId) {
-                    chatId = message.peerId.userId.toString();
-                } else {
-                    chatId = message.chatId ? message.chatId.toString() : null;
-                }
+                // Get User ID for database key
+                let chatId = message.peerId && message.peerId.userId ? message.peerId.userId.toString() : 
+                             (message.chatId ? message.chatId.toString() : null);
 
-                if (!chatId) return; // Skip if we can't identify the user
+                if (!chatId) return;
 
                 try {
-                    // Check if we already replied to this user in DB
                     const alreadyReplied = await ReplyModel.findOne({ chatId });
-                    
                     if (!alreadyReplied) {
-                        // Send the message immediately
-                        await client.sendMessage(chatId, { message: autoReplyMsg });
+                        // Use message.reply() for maximum reliability (avoids 'Entity' error)
+                        await message.reply({ message: autoReplyMsg });
                         console.log(`💬 Auto-replied to user: ${chatId}`);
-                        
-                        // Save to DB so we don't reply again
                         await ReplyModel.create({ chatId });
                     }
                 } catch (e) {
@@ -100,7 +90,7 @@ async function connectDB() {
 
     // Automatic Promotion Loop
     async function runPromotionLoop() {
-        console.log("🔄 Fetching all joined groups...");
+        console.log("\n🔄 Starting promotion round...");
         let groupsToPromo = [];
         try {
             const dialogs = await client.getDialogs({});
@@ -113,29 +103,35 @@ async function connectDB() {
             console.log("❌ Failed to fetch groups:", e.message);
         }
 
-        console.log(`🎯 Found ${groupsToPromo.length} groups to promote in.`);
+        console.log(`🎯 Found ${groupsToPromo.length} groups. Sending messages...`);
+
+        let successCount = 0;
+        let skipCount = 0;
 
         if (groupsToPromo.length > 0) {
             for (let groupId of groupsToPromo) {
                 try {
                     const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
                     await client.sendMessage(groupId, { message: msg });
-                    console.log(`✅ Sent to Group ID ${groupId}: ${msg}`);
+                    successCount++;
                     
-                    // Human gap between groups (15s - 40s)
+                    // Human gap (15s - 40s)
                     const humanGap = Math.floor(Math.random() * (40000 - 15000)) + 15000; 
                     await new Promise(r => setTimeout(r, humanGap)); 
                 } catch (err) {
-                    console.log(`⚠️ Skip Group ${groupId}: ${err.message}`);
+                    skipCount++;
+                    // Log only critical group errors to keep it clean
                 }
             }
         }
+
+        console.log(`✅ Round Summary: ${successCount} sent, ${skipCount} skipped.`);
 
         const baseDelayMs = delayMinutes * 60 * 1000;
         const extraVariationMs = Math.floor(Math.random() * 90000); 
         const finalDelay = baseDelayMs + extraVariationMs;
         
-        console.log(`\n⏳ Round completed! Next round in ${Math.floor(finalDelay / 60000)} min ${Math.floor((finalDelay % 60000) / 1000)} sec...`);
+        console.log(`⏳ Next round in ${Math.floor(finalDelay / 60000)} min...`);
         setTimeout(runPromotionLoop, finalDelay);
     }
 
