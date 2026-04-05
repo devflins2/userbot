@@ -10,6 +10,15 @@ const apiHash = process.env.API_HASH;
 const stringSession = new StringSession(process.env.SESSION_STRING || "");
 const mongoUri = process.env.MONGO_URI;
 
+// Render ke liye chota HTTP server (taaki Port error na aaye)
+const http = require("http");
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end("Bot is running!");
+}).listen(PORT, () => {
+    console.log(`🌍 Health check server running on port ${PORT}`);
+});
 // Messages aur delay config
 const rawMsgs = process.env.PROMO_MESSAGES || "";
 const MESSAGES = rawMsgs.split("|").map(m => m.trim()).filter(m => m.length > 0);
