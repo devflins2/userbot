@@ -61,22 +61,33 @@ async function connectDB() {
 
     console.log("✅ Logged in successfully!");
 
-    // DM Auto-Reply System (DB Based)
+    // DM Auto-Reply System (DB Based - Replied only once ever)
     if (autoReplyMsg.length > 0) {
         client.addEventHandler(async (event) => {
             const message = event.message;
-            if (message.isPrivate && !message.out) {
-                const chatId = message.chatId.toString();
-                
+            
+            // Check if it's a private incoming message (not from the bot itself)
+            if (event.isPrivate && !message.out) {
+                // Get User ID from peerId carefully
+                let chatId;
+                if (message.peerId && message.peerId.userId) {
+                    chatId = message.peerId.userId.toString();
+                } else {
+                    chatId = message.chatId ? message.chatId.toString() : null;
+                }
+
+                if (!chatId) return; // Skip if we can't identify the user
+
                 try {
                     // Check if we already replied to this user in DB
                     const alreadyReplied = await ReplyModel.findOne({ chatId });
                     
                     if (!alreadyReplied) {
+                        // Send the message immediately
                         await client.sendMessage(chatId, { message: autoReplyMsg });
                         console.log(`💬 Auto-replied to user: ${chatId}`);
                         
-                        // Save to DB so we don't reply again after restart
+                        // Save to DB so we don't reply again
                         await ReplyModel.create({ chatId });
                     }
                 } catch (e) {
