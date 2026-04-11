@@ -24,6 +24,9 @@ const rawMsgs = process.env.PROMO_MESSAGES || "";
 const MESSAGES = rawMsgs.split("|").map(m => m.trim()).filter(m => m.length > 0);
 const delayMinutes = Number(process.env.DELAY_MINUTES) || 5;
 const autoReplyMsg = process.env.AUTO_REPLY_MESSAGE || "";
+const ignoredGroupsRaw = process.env.IGNORED_GROUPS || "";
+const IGNORED_GROUPS = ignoredGroupsRaw.split(',').map(id => id.trim()).filter(id => id);
+const replyToContacts = (process.env.REPLY_TO_CONTACTS || "false").toLowerCase() === "true";
 
 // MongoDB Schema for Auto-Reply Persistence
 const replySchema = new mongoose.Schema({
@@ -60,12 +63,19 @@ async function connectDB() {
     });
 
     console.log("✅ Logged in successfully!");
+    console.log("🔑 Your session string:", client.session.save());
 
     // DM Auto-Reply System (DB Based - Replied only once ever)
     if (autoReplyMsg.length > 0) {
         client.addEventHandler(async (event) => {
             const message = event.message;
             if (event.isPrivate && !message.out) {
+                const sender = await message.getSender();
+                if (!replyToContacts && sender && sender.contact) {
+                    console.log(`☑️ Skipping auto-reply to contact: ${sender.username || sender.id}`);
+                    return;
+                }
+
                 // Get User ID for database key
                 let chatId = message.peerId && message.peerId.userId ? message.peerId.userId.toString() : 
                              (message.chatId ? message.chatId.toString() : null);
@@ -86,6 +96,9 @@ async function connectDB() {
             }
         }, new NewMessage({ incoming: true }));
         console.log("🤖 PERSISTENT Auto-reply for Private Messages is active!");
+        if (!replyToContacts) {
+            console.log("🚫 Auto-reply to contacts is disabled.");
+        }
     }
 
     // Automatic Promotion Loop
@@ -95,7 +108,7 @@ async function connectDB() {
         try {
             const dialogs = await client.getDialogs({});
             for (const dialog of dialogs) {
-                if (dialog.isGroup || dialog.isMegaGroup) {
+                if ((dialog.isGroup || dialog.isMegaGroup) && !IGNORED_GROUPS.includes(dialog.id.toString())) {
                     groupsToPromo.push(dialog.id);
                 }
             }
